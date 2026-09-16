@@ -90,9 +90,10 @@ def node():
     n.destroy_node()
 
 
-def _battery_state(percentage=float('nan')):
+def _battery_state(percentage=float('nan'), current=0.0):
     msg = BatteryState()
     msg.percentage = percentage
+    msg.current = current
     return msg
 
 
@@ -137,6 +138,52 @@ class TestPercentageThresholds:
         node._on_battery_state(_battery_state(percentage=1.0))
 
         assert full_calls == [True]
+
+
+class TestChargerPresenceWiring:
+    """Node-level wiring: BatteryEventsNode feeds current into ChargerPresenceDetector and
+    calls /charger_connected only on a genuine edge. Detector logic itself is covered by
+    test_charger_presence.py - these tests only check the wiring.
+    """
+
+    def _settle(self, node, current, samples=10):
+        for _ in range(samples):
+            node._on_battery_state(_battery_state(current=current))
+
+    def test_settled_no_charger_current_reports_disconnected(self, node, monkeypatch):
+        calls = []
+        monkeypatch.setattr(node._charger_connected, 'set', calls.append)
+
+        self._settle(node, -1.72)
+
+        assert calls == [False]
+
+    def test_settled_charger_current_reports_connected(self, node, monkeypatch):
+        calls = []
+        monkeypatch.setattr(node._charger_connected, 'set', calls.append)
+
+        self._settle(node, -0.60)
+
+        assert calls == [True]
+
+    def test_does_not_fire_again_while_still_settled_same_state(self, node, monkeypatch):
+        calls = []
+        monkeypatch.setattr(node._charger_connected, 'set', calls.append)
+
+        self._settle(node, -1.72)
+        self._settle(node, -1.72)
+
+        assert calls == [False]
+
+    def test_varying_current_never_fires(self, node, monkeypatch):
+        """Simulates driving - never settles, so /charger_connected is never called."""
+        calls = []
+        monkeypatch.setattr(node._charger_connected, 'set', calls.append)
+
+        for current in [-1.8, -1.3, -1.7, -1.3, -1.8, -1.3, -1.7, -1.3, -1.8, -1.3]:
+            node._on_battery_state(_battery_state(current=current))
+
+        assert calls == []
 
 
 class TestThresholdValidation:

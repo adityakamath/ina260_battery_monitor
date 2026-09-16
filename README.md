@@ -95,7 +95,7 @@ netted out correctly rather than ignored.
 |---|---|---|
 | `i2c_bus` | `1` | Linux I2C bus number (`/dev/i2c-N`) |
 | `i2c_address` | `0x40` | INA260 I2C address (`0x40`-`0x4F` via `ADDR` pins) |
-| `publish_rate_hz` | `2.0` | `BatteryState` publish rate |
+| `publish_rate_hz` | `20.0` | `BatteryState` publish rate - fast on purpose, see `/charger_connected` below |
 | `frame_id` | `base_link` | Header frame ID on published messages |
 | `current_polarity_inverted` | `false` | Flip current sign if wiring reads charging as negative |
 | `chemistry` | `LION` | `LIPO` or `LION` - selects the OCV table in `ocv_tables.py` |
@@ -111,6 +111,29 @@ netted out correctly rather than ignored.
 | `state_max_stale_s` | `3600.0` | Discard saved state older than this; reseed from OCV instead |
 | `serial_number` | `""` | `BatteryState.serial_number` |
 | `location` | `""` | `BatteryState.location` |
+| `publish_diagnostics` | `true` | Publish time-to-full/time-to-empty as a `DiagnosticArray` entry (see below) |
+| `diagnostics_topic` | `/diagnostics` | Topic for the battery `DiagnosticArray` entry |
+| `eta_current_ema_alpha` | `0.01` | EMA smoothing factor for the current used in the ETA calculation (~5s time constant at `publish_rate_hz=20`) - lower is smoother/slower to react |
+
+## Time-to-full / time-to-empty
+
+`sensor_msgs/BatteryState` has no field for this, so it's published as a `diagnostic_msgs/DiagnosticArray`
+entry (`status.name = 'battery: ina260'`) instead of a custom message - the same convention
+`lekiwi_navigation`'s `waypoint_recorder_node` already uses for its own derived, non-`BatteryState` data.
+
+Current is EMA-smoothed (`eta_current_ema_alpha`) before the estimate, since a single raw reading is noisy
+enough (motor draw spikes, I2C jitter) that dividing by it directly would make the ETA jitter wildly between
+publishes. See `battery_eta.py`.
+
+| `status.values` key | Present when | Meaning |
+|---|---|---|
+| `smoothed_current_a` | Always | The EMA-smoothed current used for the estimate below |
+| `time_to_full_sec` | Smoothed current > `idle_current_threshold_a` (charging) | `(design_capacity_ah - charge_ah) / smoothed_current_a * 3600` |
+| `time_to_empty_sec` | Smoothed current < `-idle_current_threshold_a` (discharging) | `charge_ah / \|smoothed_current_a\| * 3600` |
+
+Neither key is present while `\|smoothed current\|` is within `idle_current_threshold_a` - there's no
+meaningful rate to extrapolate from, and `status.message` says so (`"Idle - no ETA..."`) rather than
+publishing a stale or divide-by-near-zero figure.
 
 ## Battery events
 
@@ -141,14 +164,32 @@ Each is hysteresis-debounced so a value oscillating near a threshold doesn't spa
 calls; `/battery_low` and `/battery_critical` can both fire on the same reading if a drop
 jumps straight past both.
 
-**No charging/discharging indicator.** With the INA260 wired between the battery and a
-Y-split (charge port + robot load - see [Wiring](#wiring)), net current can't tell
-"charger connected but outpaced by the robot's load" apart from "no charger at all" - both
-produce the same negative net reading (confirmed empirically: net current stayed negative
-both with and without a charger connected while the robot was running, the difference
-between the two being exactly the charger's - insufficient - contribution). A real fix
-needs an independent signal, like a charger-presence GPIO decoupled from net current
-direction, not a smarter algorithm on this one sensor.
+### `/charger_connected` - no GPIO, current only
+
+With the INA260 wired between the battery and a Y-split (charge port + robot load - see
+[Wiring](#wiring)), net current alone can't tell "charger connected but outpaced by the
+robot's load" apart from "no charger at all" *under arbitrary motion* - both can produce the
+same negative net reading. `/charger_connected` doesn't try to solve that case: it only ever
+updates from a settled, at-rest reading (`ChargerPresenceDetector`, in `charger_presence.py`),
+holding its last determination while the robot is active rather than guessing off a driving
+reading.
+
+"At rest" is inferred from the current signal's own stability (no motion data available at
+this layer): once `charger_rest_window_samples` consecutive readings all fall within
+`charger_rest_spread_threshold_a` of each other, that average is compared against
+`no_charger_idle_current_a + charger_current_margin_a`.
+
+Bench-measured on a real LeKiwi (2026-09-13): **-0.60 A** resting with the charger connected
+vs. **-1.72 A** without - a clean 1.12 A gap, and (separately) **+0.88 A** vs. **-1.51 A**
+while actually driving that session, though the driving case is not relied on - a heavier or
+more sustained load than that could still exceed the charger's own output and read negative
+even while connected, which is exactly the ambiguity a rest-only reading avoids. These
+values are pack/robot-specific and must be recalibrated for a different pack or robot.
+
+Detection latency is `charger_rest_window_samples / publish_rate_hz` in the worst case (a
+window has to be entirely post-transition before it can settle) - `publish_rate_hz` defaults
+to `20.0` specifically so this stays fast (~0.5 s) without shrinking the window and weakening
+the debounce itself.
 
 | Parameter | Default |
 |---|---|
@@ -156,6 +197,10 @@ direction, not a smarter algorithm on this one sensor.
 | `low_battery_threshold` / `low_battery_hysteresis` | `0.2` / `0.05` |
 | `critical_battery_threshold` / `critical_battery_hysteresis` | `0.1` / `0.03` |
 | `full_battery_threshold` / `full_battery_hysteresis` | `0.98` / `0.02` |
+| `no_charger_idle_current_a` | `-1.72` |
+| `charger_current_margin_a` | `0.4` |
+| `charger_rest_spread_threshold_a` | `0.35` |
+| `charger_rest_window_samples` | `10` |
 
 ## Design notes
 
@@ -199,9 +244,6 @@ worth knowing about rather than a solved case.
   coulomb-counting drift turns out to be a real problem in practice.
 - **Capacity fade tracking**: distinguish `capacity` (last full capacity) from
   `design_capacity` as the pack ages.
-- **Time-to-full / time-to-empty estimates**: `sensor_msgs/BatteryState` has no field
-  for this, so it's out of scope for this package's core publisher; deferred pending a
-  decision on how to expose it (`/diagnostics` KeyValue pairs vs. a custom message).
 
 ## License
 

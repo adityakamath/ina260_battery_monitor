@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 
 import rclpy
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from ina260_battery_monitor.battery_eta import BatteryETA
 from ina260_battery_monitor.coulomb_counter import CoulombCounter
 from ina260_battery_monitor.ina260_sensor import INA260Error, INA260Sensor
 from rclpy.node import Node
@@ -31,6 +33,13 @@ _TECHNOLOGY_BY_NAME = {
 }
 
 
+def _format_duration(seconds: float) -> str:
+    minutes = seconds / 60.0
+    if minutes < 60.0:
+        return f'{minutes:.0f} min'
+    return f'{minutes / 60.0:.1f} h'
+
+
 class BatteryMonitorNode(Node):
 
     def __init__(self, **kwargs):
@@ -38,7 +47,11 @@ class BatteryMonitorNode(Node):
 
         self.declare_parameter('i2c_bus', 1)
         self.declare_parameter('i2c_address', 0x40)
-        self.declare_parameter('publish_rate_hz', 2.0)
+        # 20Hz, not 2Hz: charger_presence.py's rest-window is expressed in sample count, not
+        # wall-clock time, so a faster publish rate directly shortens its detection latency
+        # (10 samples: 5s at 2Hz -> 0.5s here) without weakening the debounce itself. See
+        # eta_current_ema_alpha below, which is scaled to compensate.
+        self.declare_parameter('publish_rate_hz', 20.0)
         self.declare_parameter('frame_id', 'base_link')
         self.declare_parameter('current_polarity_inverted', False)
 
@@ -57,6 +70,13 @@ class BatteryMonitorNode(Node):
 
         self.declare_parameter('serial_number', '')
         self.declare_parameter('location', '')
+
+        self.declare_parameter('publish_diagnostics', True)
+        self.declare_parameter('diagnostics_topic', '/diagnostics')
+        # EMA time constant is roughly dt/alpha - scaled down from 0.1 to hold the same ~5s
+        # smoothing now that publish_rate_hz went from 2Hz to 20Hz (dt shrank 10x, so alpha
+        # must too, or this would respond 10x faster than it was tuned for).
+        self.declare_parameter('eta_current_ema_alpha', 0.01)
 
         chemistry = self.get_parameter('chemistry').value
         if chemistry not in _TECHNOLOGY_BY_NAME:
@@ -87,6 +107,11 @@ class BatteryMonitorNode(Node):
             state_path=state_path,
             state_max_stale_s=self.get_parameter('state_max_stale_s').value,
         )
+        self._battery_eta = BatteryETA(
+            idle_current_threshold_a=self._idle_current_threshold_a,
+            current_ema_alpha=self.get_parameter('eta_current_ema_alpha').value,
+        )
+        self._publish_diagnostics_enabled = self.get_parameter('publish_diagnostics').value
 
         self._sensor = None
         self._hardware_missing = False
@@ -106,6 +131,9 @@ class BatteryMonitorNode(Node):
         self._sensor = sensor
 
         self._publisher = self.create_publisher(BatteryState, 'battery_state', 10)
+        if self._publish_diagnostics_enabled:
+            diagnostics_topic = self.get_parameter('diagnostics_topic').value
+            self._diagnostics_pub = self.create_publisher(DiagnosticArray, diagnostics_topic, 10)
 
         self._last_read_monotonic = None
         self._last_save_monotonic = time.monotonic()
@@ -145,6 +173,48 @@ class BatteryMonitorNode(Node):
             self._last_save_monotonic = now
 
         self._publisher.publish(self._to_battery_state(voltage, current))
+
+        if self._publish_diagnostics_enabled:
+            self._battery_eta.update(current)
+            self._publish_battery_diagnostics(voltage)
+
+    def _publish_battery_diagnostics(self, voltage: float) -> None:
+        """Publish time-to-full/time-to-empty as a DiagnosticArray entry on /diagnostics.
+
+        sensor_msgs/BatteryState has no field for this, so it goes out as KeyValue pairs
+        instead of growing a custom message - matching waypoint_recorder_node's own
+        DiagnosticArray convention for the same kind of derived, non-BatteryState data.
+        """
+        time_to_full_s, time_to_empty_s = self._battery_eta.estimate(
+            self._coulomb_counter.charge_ah, self._design_capacity_ah
+        )
+
+        status = DiagnosticStatus()
+        status.name = 'battery: ina260'
+        status.hardware_id = self._serial_number
+        status.level = (
+            DiagnosticStatus.OK
+            if self._health(voltage) == BatteryState.POWER_SUPPLY_HEALTH_GOOD
+            else DiagnosticStatus.ERROR
+        )
+
+        values = [
+            KeyValue(key='smoothed_current_a', value=f'{self._battery_eta.smoothed_current_a:.3f}')
+        ]
+        if time_to_full_s is not None:
+            values.append(KeyValue(key='time_to_full_sec', value=f'{time_to_full_s:.0f}'))
+            status.message = f'Charging - {_format_duration(time_to_full_s)} to full'
+        elif time_to_empty_s is not None:
+            values.append(KeyValue(key='time_to_empty_sec', value=f'{time_to_empty_s:.0f}'))
+            status.message = f'Discharging - {_format_duration(time_to_empty_s)} to empty'
+        else:
+            status.message = 'Idle - no ETA (current within idle threshold)'
+        status.values = values
+
+        msg = DiagnosticArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.status = [status]
+        self._diagnostics_pub.publish(msg)
 
     def _to_battery_state(self, voltage: float, current: float) -> BatteryState:
         msg = BatteryState()

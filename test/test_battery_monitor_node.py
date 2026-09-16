@@ -143,6 +143,63 @@ class TestOnTimer:
         assert published == []
 
 
+class TestBatteryDiagnostics:
+
+    def test_charging_publishes_time_to_full(self, node, monkeypatch):
+        published = []
+        monkeypatch.setattr(node._diagnostics_pub, 'publish', published.append)
+        _FakeSensor.last_instance.reading = (11.1, 1.0, 11.1)  # 3.7V/cell - within GOOD range
+
+        node._on_timer()
+
+        assert len(published) == 1
+        status = published[0].status[0]
+        assert status.name == 'battery: ina260'
+        assert status.level == node_module.DiagnosticStatus.OK
+        keys = {kv.key for kv in status.values}
+        assert 'time_to_full_sec' in keys
+        assert 'time_to_empty_sec' not in keys
+
+    def test_discharging_publishes_time_to_empty(self, node, monkeypatch):
+        published = []
+        monkeypatch.setattr(node._diagnostics_pub, 'publish', published.append)
+        _FakeSensor.last_instance.reading = (14.8, -1.0, 14.8)
+
+        node._on_timer()
+
+        status = published[0].status[0]
+        keys = {kv.key for kv in status.values}
+        assert 'time_to_empty_sec' in keys
+        assert 'time_to_full_sec' not in keys
+
+    def test_idle_current_publishes_no_eta(self, node, monkeypatch):
+        published = []
+        monkeypatch.setattr(node._diagnostics_pub, 'publish', published.append)
+        _FakeSensor.last_instance.reading = (14.8, 0.0, 0.0)
+
+        node._on_timer()
+
+        status = published[0].status[0]
+        keys = {kv.key for kv in status.values}
+        assert 'time_to_full_sec' not in keys
+        assert 'time_to_empty_sec' not in keys
+        assert 'idle' in status.message.lower()
+
+    def test_publish_diagnostics_false_skips_topic_entirely(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(node_module, 'INA260Sensor', _FakeSensor)
+        n = node_module.BatteryMonitorNode(
+            parameter_overrides=[
+                rclpy.parameter.Parameter('state_file_path', value=str(tmp_path / 'state.yaml')),
+                rclpy.parameter.Parameter('publish_diagnostics', value=False),
+            ]
+        )
+        try:
+            assert not hasattr(n, '_diagnostics_pub')
+            n._on_timer()  # must not raise
+        finally:
+            n.destroy_node()
+
+
 class TestHardwareMissing:
     """No INA260 answering at startup must warn and shut down cleanly, not crash."""
 
@@ -168,6 +225,7 @@ class TestHardwareMissing:
         try:
             assert not hasattr(n, '_publisher')
             assert not hasattr(n, '_timer')
+            assert not hasattr(n, '_diagnostics_pub')
         finally:
             n.destroy_node()
 

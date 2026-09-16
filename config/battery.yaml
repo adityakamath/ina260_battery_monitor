@@ -2,7 +2,7 @@ battery_monitor_node:
   ros__parameters:
     i2c_bus: 1
     i2c_address: 0x40          # Adafruit INA260 default address (0x40-0x4F via ADDR pins)
-    publish_rate_hz: 2.0
+    publish_rate_hz: 20.0      # fast on purpose - shortens charger_connected's detection latency
     frame_id: base_link
     current_polarity_inverted: true  # flip if wiring reads charging as negative current
 
@@ -21,6 +21,10 @@ battery_monitor_node:
     serial_number: ""
     location: ""
 
+    publish_diagnostics: true        # time-to-full/time-to-empty as a DiagnosticArray entry
+    diagnostics_topic: /diagnostics
+    eta_current_ema_alpha: 0.01      # ~5s time constant at publish_rate_hz=20 - see battery_monitor_node.py
+
 battery_events_node:
   ros__parameters:
     battery_state_topic: /battery_state
@@ -33,3 +37,10 @@ battery_events_node:
 
     full_battery_threshold: 0.98     # /battery_full fires once, rising edge
     full_battery_hysteresis: 0.02    # must drop back below threshold - this before re-arming
+
+    # /charger_connected - bench-measured on this exact robot/pack (2026-09-13), see
+    # charger_presence.py. Recalibrate no_charger_idle_current_a for a different pack/robot.
+    no_charger_idle_current_a: -1.72     # this robot's resting current, charger off, stack up
+    charger_current_margin_a: 0.4        # threshold = -1.32 A; measured connected rest was -0.60 A
+    charger_rest_spread_threshold_a: 0.35  # max-min within the window must stay under this to count as settled
+    charger_rest_window_samples: 10        # at battery_state's 20Hz default, ~0.5s of settled readings

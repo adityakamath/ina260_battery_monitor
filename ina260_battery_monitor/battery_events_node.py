@@ -10,27 +10,31 @@ indicator_node already knows how to observe. The server side has no real side ef
 existing for introspection to see - callers here are trusted to only invoke set() on a
 genuine edge, not every tick, since nothing de-duplicates repeated identical calls downstream.
 
-Three events/services:
+Four events/services:
     /battery_low       - true once percentage falls to/below low_battery_threshold
     /battery_critical  - true once percentage falls to/below critical_battery_threshold
     /battery_full      - true once percentage rises to/above full_battery_threshold
+    /charger_connected - true/false from a settled, at-rest current reading (see below)
 
-Each is an independent hysteresis watcher (see _ThresholdWatcher) so a percentage
-oscillating near a threshold doesn't spam repeat calls; each also has a "false" side for
-re-arming, but phrases.yaml only wires a phrase to "true" - this narrates the requested
-once-per-edge behavior while keeping the underlying services genuinely two-sided for any
-other future consumer.
+The three percentage events are each an independent hysteresis watcher (see
+_ThresholdWatcher) so a percentage oscillating near a threshold doesn't spam repeat calls;
+each also has a "false" side for re-arming, but phrases.yaml only wires a phrase to "true"
+for those three - this narrates the requested once-per-edge behavior while keeping the
+underlying services genuinely two-sided for any other future consumer. `/charger_connected`
+is genuinely two-sided in phrases.yaml too, since both directions are worth announcing.
 
-There is deliberately no charging/discharging indicator: with the INA260 wired between the
-battery and a Y-split (charge port + robot load - see README "Wiring"), net current can't
-tell "charger connected but outpaced by the robot's load" apart from "no charger at all" -
-both produce the same negative net reading. A real fix needs an independent signal (e.g. a
-charger-presence GPIO), not a smarter algorithm on this one sensor.
+A single net-current sensor can't tell "charger connected but outpaced by the robot's load"
+apart from "no charger at all" under arbitrary motion - both can produce the same negative
+net reading (see README "Wiring"). `/charger_connected` doesn't try to solve that under
+load: it only ever updates from a settled, at-rest reading (ChargerPresenceDetector, in
+charger_presence.py), holding its last determination while the robot is active. Bench
+measurements backing this are documented there.
 """
 
 from typing import Callable
 
 import rclpy
+from ina260_battery_monitor.charger_presence import ChargerPresenceDetector
 from rclpy._rclpy_pybind11.service_introspection import ServiceIntrospectionState
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
@@ -138,6 +142,13 @@ class BatteryEventsNode(Node):
         self.declare_parameter('full_battery_threshold', 0.98)
         self.declare_parameter('full_battery_hysteresis', 0.02)
 
+        # Bench-measured on a real LeKiwi (2026-09-13, see charger_presence.py) - these three
+        # are pack/robot-specific and must be recalibrated for a different pack or robot.
+        self.declare_parameter('no_charger_idle_current_a', -1.72)
+        self.declare_parameter('charger_current_margin_a', 0.4)
+        self.declare_parameter('charger_rest_spread_threshold_a', 0.35)
+        self.declare_parameter('charger_rest_window_samples', 10)
+
         low_threshold = self.get_parameter('low_battery_threshold').value
         critical_threshold = self.get_parameter('critical_battery_threshold').value
         full_threshold = self.get_parameter('full_battery_threshold').value
@@ -150,6 +161,13 @@ class BatteryEventsNode(Node):
         self._battery_low = _StateService(self, '/battery_low')
         self._battery_critical = _StateService(self, '/battery_critical')
         self._battery_full = _StateService(self, '/battery_full')
+        self._charger_connected = _StateService(self, '/charger_connected')
+        self._charger_presence = ChargerPresenceDetector(
+            no_charger_idle_current_a=self.get_parameter('no_charger_idle_current_a').value,
+            charger_current_margin_a=self.get_parameter('charger_current_margin_a').value,
+            rest_spread_threshold_a=self.get_parameter('charger_rest_spread_threshold_a').value,
+            rest_window_samples=self.get_parameter('charger_rest_window_samples').value,
+        )
 
         self._low_watcher = _ThresholdWatcher(
             low_threshold,
@@ -189,6 +207,10 @@ class BatteryEventsNode(Node):
             self._low_watcher.update(percentage)
             self._critical_watcher.update(percentage)
             self._full_watcher.update(percentage)
+
+        connected = self._charger_presence.update(msg.current)
+        if connected is not None:
+            self._charger_connected.set(connected)
 
 
 def main(args=None):
