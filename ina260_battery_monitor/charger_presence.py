@@ -32,8 +32,13 @@ class ChargerPresenceDetector:
         charger_current_margin_a: float,
         rest_spread_threshold_a: float,
         rest_window_samples: int,
+        hysteresis_a: float = 0.2,
+        flip_confirm_samples: int = 40,
     ):
         self._threshold_a = no_charger_idle_current_a + charger_current_margin_a
+        self._hysteresis_a = hysteresis_a
+        self._flip_confirm_samples = flip_confirm_samples
+        self._flip_streak = 0
         self._rest_spread_threshold_a = rest_spread_threshold_a
         self._window = deque(maxlen=rest_window_samples)
         self._connected = None  # None = no determination made yet
@@ -54,11 +59,24 @@ class ChargerPresenceDetector:
             return None
 
         if max(self._window) - min(self._window) > self._rest_spread_threshold_a:
+            self._flip_streak = 0
             return None  # not settled - hold the last determination
 
         mean_current = sum(self._window) / len(self._window)
-        new_connected = mean_current > self._threshold_a
-        if new_connected == self._connected:
+        if self._connected is None:
+            self._connected = mean_current > self._threshold_a
+            return self._connected
+
+        # Flipping needs to clear the threshold by the hysteresis band and stay there for
+        # flip_confirm_samples settled readings, so a reading hovering near the threshold
+        # can't toggle (and re-announce) repeatedly.
+        if self._connected:
+            wants_flip = mean_current < self._threshold_a - self._hysteresis_a
+        else:
+            wants_flip = mean_current > self._threshold_a + self._hysteresis_a
+        self._flip_streak = self._flip_streak + 1 if wants_flip else 0
+        if self._flip_streak < self._flip_confirm_samples:
             return None
-        self._connected = new_connected
-        return new_connected
+        self._flip_streak = 0
+        self._connected = not self._connected
+        return self._connected

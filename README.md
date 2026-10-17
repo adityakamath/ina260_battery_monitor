@@ -186,10 +186,15 @@ more sustained load than that could still exceed the charger's own output and re
 even while connected, which is exactly the ambiguity a rest-only reading avoids. These
 values are pack/robot-specific and must be recalibrated for a different pack or robot.
 
-Detection latency is `charger_rest_window_samples / publish_rate_hz` in the worst case (a
-window has to be entirely post-transition before it can settle) - `publish_rate_hz` defaults
-to `20.0` specifically so this stays fast (~0.5 s) without shrinking the window and weakening
-the debounce itself.
+Once a determination exists, flipping it is debounced: the settled average has to clear the
+threshold by `charger_hysteresis_a` and stay there for `charger_flip_confirm_samples` settled
+readings in a row (any unsettled window resets the count), so a reading hovering near the
+threshold can't toggle and re-announce repeatedly. The first determination after startup
+skips this and is made immediately.
+
+Detection latency for the first determination is `charger_rest_window_samples / publish_rate_hz`
+(~0.5 s at the `20.0` default). A later flip takes an additional `charger_flip_confirm_samples /
+publish_rate_hz` (~2 s with the defaults) of settled readings on top of that.
 
 | Parameter | Default |
 |---|---|
@@ -201,6 +206,8 @@ the debounce itself.
 | `charger_current_margin_a` | `0.4` |
 | `charger_rest_spread_threshold_a` | `0.35` |
 | `charger_rest_window_samples` | `10` |
+| `charger_hysteresis_a` | `0.2` |
+| `charger_flip_confirm_samples` | `40` |
 
 ## Design notes
 

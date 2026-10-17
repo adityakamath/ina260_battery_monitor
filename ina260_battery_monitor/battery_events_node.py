@@ -148,6 +148,8 @@ class BatteryEventsNode(Node):
         self.declare_parameter('charger_current_margin_a', 0.4)
         self.declare_parameter('charger_rest_spread_threshold_a', 0.35)
         self.declare_parameter('charger_rest_window_samples', 10)
+        self.declare_parameter('charger_hysteresis_a', 0.2)
+        self.declare_parameter('charger_flip_confirm_samples', 40)
 
         low_threshold = self.get_parameter('low_battery_threshold').value
         critical_threshold = self.get_parameter('critical_battery_threshold').value
@@ -167,6 +169,8 @@ class BatteryEventsNode(Node):
             charger_current_margin_a=self.get_parameter('charger_current_margin_a').value,
             rest_spread_threshold_a=self.get_parameter('charger_rest_spread_threshold_a').value,
             rest_window_samples=self.get_parameter('charger_rest_window_samples').value,
+            hysteresis_a=self.get_parameter('charger_hysteresis_a').value,
+            flip_confirm_samples=self.get_parameter('charger_flip_confirm_samples').value,
         )
 
         self._low_watcher = _ThresholdWatcher(
