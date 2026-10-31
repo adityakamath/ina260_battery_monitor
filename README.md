@@ -4,7 +4,6 @@
 ![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
 ![Python](https://img.shields.io/badge/Python-3-blue?style=flat&logo=python&logoColor=white)
 [![CI](https://github.com/adityakamath/ina260_battery_monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/adityakamath/ina260_battery_monitor/actions/workflows/ci.yml)
-[![Ask DeepWiki (Experimental)](https://deepwiki.com/badge.svg)](https://deepwiki.com/adityakamath/ina260_battery_monitor)
 ![License](https://img.shields.io/github/license/adityakamath/ina260_battery_monitor?label=License)
 
 Publishes [`sensor_msgs/BatteryState`](https://docs.ros.org/en/kilted/p/sensor_msgs/interfaces/msg/BatteryState.html)
