@@ -1,7 +1,7 @@
 # INA260 ROS 2 Battery Monitor
 
 ![Project Status](https://img.shields.io/badge/Status-Active-green)
-![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20(Ubuntu%2024.04)-blue?style=flat&logo=ros&logoSize=auto)
+![ROS 2](https://img.shields.io/badge/ROS%202-Kilted%20%7C%20Jazzy-blue?style=flat&logo=ros&logoSize=auto)
 ![Python](https://img.shields.io/badge/Python-3-blue?style=flat&logo=python&logoColor=white)
 [![CI](https://github.com/adityakamath/ina260_battery_monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/adityakamath/ina260_battery_monitor/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/adityakamath/ina260_battery_monitor?label=License)
@@ -10,7 +10,7 @@ Publishes [`sensor_msgs/BatteryState`](https://docs.ros.org/en/kilted/p/sensor_m
 from an [Adafruit INA260](https://www.adafruit.com/product/4226) current/voltage/power
 sensor over I2C, with software coulomb counting for charge and percentage estimation.
 
-**⚠️ Status:** Built for Raspberry Pi 5 running ROS 2 Kilted (Ubuntu 24.04, aarch64).
+**Status:** Built and tested on a Raspberry Pi 5 running ROS 2 Kilted (Ubuntu 24.04, aarch64). CI also builds and tests it on Jazzy and Lyrical.
 Talks to the INA260 directly over Linux `i2c-dev` via `smbus2`.
 
 ## Features
