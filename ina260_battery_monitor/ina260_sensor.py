@@ -13,7 +13,6 @@ from smbus2 import SMBus
 _REG_CONFIG = 0x00
 _REG_CURRENT = 0x01
 _REG_VOLTAGE = 0x02
-_REG_POWER = 0x03
 _REG_MANUFACTURER_ID = 0xFE
 _REG_DIE_ID = 0xFF
 
@@ -21,7 +20,6 @@ _MANUFACTURER_ID = 0x5449  # "TI"
 
 _CURRENT_LSB = 1.25e-3  # A/bit, signed
 _VOLTAGE_LSB = 1.25e-3  # V/bit, unsigned
-_POWER_LSB = 10e-3  # W/bit, unsigned
 
 _CONFIG_RESET = 0x8000
 
@@ -47,11 +45,14 @@ class INA260Sensor:
             )
 
     def read(self) -> tuple[float, float, float]:
-        """Return (voltage_v, current_a, power_w). current is positive as the INA260 sees it."""
+        """Return (voltage_v, current_a, power_w). current is positive as the INA260 sees it.
+
+        Power is voltage x current rather than the chip's own power register (which computes the
+        same product): one fewer I2C transaction per read on a bus shared with the IMU and ToF.
+        """
         voltage = self._read_register(_REG_VOLTAGE) * _VOLTAGE_LSB
         current = self._read_signed_register(_REG_CURRENT) * _CURRENT_LSB
-        power = self._read_register(_REG_POWER) * _POWER_LSB
-        return voltage, current, power
+        return voltage, current, voltage * current
 
     def close(self) -> None:
         self._bus.close()

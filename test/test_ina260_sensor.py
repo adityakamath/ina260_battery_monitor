@@ -53,7 +53,7 @@ class TestRead:
             0x01: struct.pack('>h', round(0.5 / 1.25e-3)),
             0x03: struct.pack('>H', round(7.4 / 10e-3)),
         }
-        sensor = _make_sensor(monkeypatch, registers)
+        sensor = _make_sensor(monkeypatch, registers, raise_oserror_on={0x03})  # power is V x I, never read
         voltage, current, power = sensor.read()
         assert voltage == pytest.approx(14.8, abs=1e-3)
         assert current == pytest.approx(0.5, abs=1e-3)

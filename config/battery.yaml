@@ -15,7 +15,7 @@ battery_monitor_node:
     idle_current_threshold_a: 0.05   # |current| below this -> NOT_CHARGING / FULL status
     rest_current_threshold_a: 0.05   # |current| below this counts as "at rest" for OCV recal
     rest_settle_s: 60.0              # must be at rest this long before recalibrating from OCV
-    state_save_interval_s: 30.0
+    state_save_interval_s: 90.0
     state_max_stale_s: 3600.0        # discard saved state older than this, reseed from OCV instead
 
     serial_number: ""
@@ -23,6 +23,7 @@ battery_monitor_node:
 
     publish_diagnostics: true        # time-to-full/time-to-empty as a DiagnosticArray entry
     diagnostics_topic: /diagnostics
+    diagnostics_rate_hz: 1.0         # ETA changes over minutes; independent of publish_rate_hz
     eta_current_ema_alpha: 0.01      # ~5s time constant at publish_rate_hz=20 - see battery_monitor_node.py
 
 battery_events_node:

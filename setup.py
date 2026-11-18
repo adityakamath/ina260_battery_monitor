@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'battery_monitor_node = ina260_battery_monitor.battery_monitor_node:main',
             'battery_events_node = ina260_battery_monitor.battery_events_node:main',
+            'battery_nodes = ina260_battery_monitor.battery_nodes:main',
             'ina260_calibrate = ina260_battery_monitor.calibrate:main',
         ],
     },

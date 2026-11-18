@@ -65,7 +65,7 @@ class BatteryMonitorNode(Node):
         self.declare_parameter('rest_current_threshold_a', 0.05)
         self.declare_parameter('rest_settle_s', 60.0)
         self.declare_parameter('state_file_path', _DEFAULT_STATE_PATH)
-        self.declare_parameter('state_save_interval_s', 30.0)
+        self.declare_parameter('state_save_interval_s', 90.0)
         self.declare_parameter('state_max_stale_s', 3600.0)
 
         self.declare_parameter('serial_number', '')
@@ -73,6 +73,8 @@ class BatteryMonitorNode(Node):
 
         self.declare_parameter('publish_diagnostics', True)
         self.declare_parameter('diagnostics_topic', '/diagnostics')
+        # The ETA changes over minutes, so it doesn't need to go out at publish_rate_hz
+        self.declare_parameter('diagnostics_rate_hz', 1.0)
         # EMA time constant is roughly dt/alpha - scaled down from 0.1 to hold the same ~5s
         # smoothing now that publish_rate_hz went from 2Hz to 20Hz (dt shrank 10x, so alpha
         # must too, or this would respond 10x faster than it was tuned for).
@@ -137,6 +139,8 @@ class BatteryMonitorNode(Node):
 
         self._last_read_monotonic = None
         self._last_save_monotonic = time.monotonic()
+        self._diagnostics_period_s = 1.0 / self.get_parameter('diagnostics_rate_hz').value
+        self._last_diagnostics_monotonic = 0.0
 
         publish_rate_hz = self.get_parameter('publish_rate_hz').value
         self._timer = self.create_timer(1.0 / publish_rate_hz, self._on_timer)
@@ -176,7 +180,9 @@ class BatteryMonitorNode(Node):
 
         if self._publish_diagnostics_enabled:
             self._battery_eta.update(current)
-            self._publish_battery_diagnostics(voltage)
+            if now - self._last_diagnostics_monotonic >= self._diagnostics_period_s:
+                self._last_diagnostics_monotonic = now
+                self._publish_battery_diagnostics(voltage)
 
     def _publish_battery_diagnostics(self, voltage: float) -> None:
         """Publish time-to-full/time-to-empty as a DiagnosticArray entry on /diagnostics.

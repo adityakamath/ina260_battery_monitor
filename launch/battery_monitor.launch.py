@@ -37,6 +37,7 @@ Example usage:
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -58,7 +59,26 @@ def generate_launch_description():
                 'battery_params_file itself (no-op).'
             ),
         ),
+        DeclareLaunchArgument(
+            'battery_single_process',
+            default_value='true',
+            description='Run both nodes in one process (true), or start one process each (false).',
+        ),
     ]
+    params = [
+        LaunchConfiguration('battery_params_file'),
+        LaunchConfiguration('battery_overrides_file'),
+    ]
+
+    # Same no-respawn reasoning as battery_monitor_node below: a missing INA260 is a clean, permanent exit
+    battery_nodes = Node(
+        package='ina260_battery_monitor',
+        executable='battery_nodes',
+        output='log',
+        respawn=False,
+        parameters=params,
+        condition=IfCondition(LaunchConfiguration('battery_single_process')),
+    )
 
     battery_monitor_node = Node(
         package='ina260_battery_monitor',
@@ -71,10 +91,8 @@ def generate_launch_description():
         # transient I2C read errors during normal operation don't exit the process at
         # all (skip-and-retry in _on_timer), so respawn has nothing left to usefully do.
         respawn=False,
-        parameters=[
-            LaunchConfiguration('battery_params_file'),
-            LaunchConfiguration('battery_overrides_file'),
-        ],
+        parameters=params,
+        condition=UnlessCondition(LaunchConfiguration('battery_single_process')),
     )
 
     battery_events_node = Node(
@@ -83,10 +101,8 @@ def generate_launch_description():
         name='battery_events_node',
         output='log',
         respawn=True,
-        parameters=[
-            LaunchConfiguration('battery_params_file'),
-            LaunchConfiguration('battery_overrides_file'),
-        ],
+        parameters=params,
+        condition=UnlessCondition(LaunchConfiguration('battery_single_process')),
     )
 
-    return LaunchDescription(declared_arguments + [battery_monitor_node, battery_events_node])
+    return LaunchDescription(declared_arguments + [battery_nodes, battery_monitor_node, battery_events_node])

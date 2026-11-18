@@ -15,9 +15,9 @@ Talks to the INA260 directly over Linux `i2c-dev` via `smbus2`.
 
 ## Features
 
-- **Direct register access**: reads bus voltage, current and power straight off the
-  INA260's registers (`smbus2`), decoded per the TI INA260 datasheet (SBOS866) -
-  no Blinka platform-detection layer in the loop
+- **Direct register access**: reads bus voltage and current straight off the
+  INA260's registers (`smbus2`), decoded per the TI INA260 datasheet (SBOS866), and
+  computes power as voltage x current - no Blinka platform-detection layer in the loop
 - **Software coulomb counting**: integrates current over time for a continuous
   charge/percentage estimate (`coulomb_counter.py`)
 - **Rest-triggered OCV recalibration**: bounds coulomb-counting drift by snapping the
@@ -106,12 +106,13 @@ netted out correctly rather than ignored.
 | `rest_current_threshold_a` | `0.05` | `\|current\|` below this counts as "at rest" for OCV recalibration |
 | `rest_settle_s` | `60.0` | Must be at rest this long before recalibrating from OCV |
 | `state_file_path` | `<package>/state/state.yaml` | Where coulomb-counter state is persisted (gitignored, package-relative by default) |
-| `state_save_interval_s` | `30.0` | How often state is written to disk |
+| `state_save_interval_s` | `90.0` | How often state is written to disk |
 | `state_max_stale_s` | `3600.0` | Discard saved state older than this; reseed from OCV instead |
 | `serial_number` | `""` | `BatteryState.serial_number` |
 | `location` | `""` | `BatteryState.location` |
 | `publish_diagnostics` | `true` | Publish time-to-full/time-to-empty as a `DiagnosticArray` entry (see below) |
 | `diagnostics_topic` | `/diagnostics` | Topic for the battery `DiagnosticArray` entry |
+| `diagnostics_rate_hz` | `1.0` | How often the diagnostics entry is published; the ETA smoothing itself still updates on every sample |
 | `eta_current_ema_alpha` | `0.01` | EMA smoothing factor for the current used in the ETA calculation (~5s time constant at `publish_rate_hz=20`) - lower is smoother/slower to react |
 
 ## Time-to-full / time-to-empty
@@ -147,7 +148,7 @@ since nothing external "calls" a battery threshold the way a person calls `/emer
 It's launched together with `battery_monitor_node` from `battery_monitor.launch.py` (it
 depends on `battery_monitor_node`'s `/battery_state`, so there's no meaningful way to run
 one without the other) - both nodes read their own top-level key out of the same
-`params_file`:
+`params_file`. By default both run in one process (the `battery_nodes` executable); `battery_single_process:=false` starts one process each, and `battery_events_node` is then respawned if it crashes:
 
 ```bash
 ros2 launch ina260_battery_monitor battery_monitor.launch.py
