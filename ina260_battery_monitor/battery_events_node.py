@@ -134,7 +134,7 @@ class BatteryEventsNode(Node):
     def __init__(self, **kwargs):
         super().__init__('battery_events_node', **kwargs)
 
-        self.declare_parameter('battery_state_topic', '/battery_state')
+        self.declare_parameter('battery_state_topic', 'battery_state')
         self.declare_parameter('low_battery_threshold', 0.2)
         self.declare_parameter('low_battery_hysteresis', 0.05)
         self.declare_parameter('critical_battery_threshold', 0.1)
@@ -160,10 +160,10 @@ class BatteryEventsNode(Node):
                 f'critical={critical_threshold} low={low_threshold} full={full_threshold}'
             )
 
-        self._battery_low = _StateService(self, '/battery_low')
-        self._battery_critical = _StateService(self, '/battery_critical')
-        self._battery_full = _StateService(self, '/battery_full')
-        self._charger_connected = _StateService(self, '/charger_connected')
+        self._battery_low = _StateService(self, 'battery_low')
+        self._battery_critical = _StateService(self, 'battery_critical')
+        self._battery_full = _StateService(self, 'battery_full')
+        self._charger_connected = _StateService(self, 'charger_connected')
         self._charger_presence = ChargerPresenceDetector(
             no_charger_idle_current_a=self.get_parameter('no_charger_idle_current_a').value,
             charger_current_margin_a=self.get_parameter('charger_current_margin_a').value,

@@ -1,4 +1,4 @@
-battery_monitor_node:
+/**/battery_monitor_node:
   ros__parameters:
     i2c_bus: 1
     i2c_address: 0x40          # Adafruit INA260 default address (0x40-0x4F via ADDR pins)
@@ -22,13 +22,13 @@ battery_monitor_node:
     location: ""
 
     publish_diagnostics: true        # time-to-full/time-to-empty as a DiagnosticArray entry
-    diagnostics_topic: /diagnostics
+    diagnostics_topic: diagnostics
     diagnostics_rate_hz: 1.0         # ETA changes over minutes; independent of publish_rate_hz
     eta_current_ema_alpha: 0.01      # ~5s time constant at publish_rate_hz=20 - see battery_monitor_node.py
 
-battery_events_node:
+/**/battery_events_node:
   ros__parameters:
-    battery_state_topic: /battery_state
+    battery_state_topic: battery_state
 
     low_battery_threshold: 0.25      # /battery_low fires once, falling edge
     low_battery_hysteresis: 0.05     # must climb back above threshold + this before re-arming

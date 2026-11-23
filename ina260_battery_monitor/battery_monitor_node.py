@@ -72,7 +72,7 @@ class BatteryMonitorNode(Node):
         self.declare_parameter('location', '')
 
         self.declare_parameter('publish_diagnostics', True)
-        self.declare_parameter('diagnostics_topic', '/diagnostics')
+        self.declare_parameter('diagnostics_topic', 'diagnostics')
         # The ETA changes over minutes, so it doesn't need to go out at publish_rate_hz
         self.declare_parameter('diagnostics_rate_hz', 1.0)
         # EMA time constant is roughly dt/alpha - scaled down from 0.1 to hold the same ~5s
