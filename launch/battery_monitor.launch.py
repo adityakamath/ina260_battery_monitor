@@ -60,9 +60,9 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
-            'battery_frame_id',
-            default_value='base_link',
-            description='TF frame named in the BatteryState header.',
+            'frame_prefix',
+            default_value='',
+            description='Prefix for the BatteryState header frame, e.g. robot1/ (frame: <prefix>base_link).',
         ),
         DeclareLaunchArgument(
             'battery_single_process',
@@ -73,7 +73,7 @@ def generate_launch_description():
     params = [
         LaunchConfiguration('battery_params_file'),
         LaunchConfiguration('battery_overrides_file'),
-        {'frame_id': LaunchConfiguration('battery_frame_id')},
+        {'frame_id': [LaunchConfiguration('frame_prefix'), 'base_link']},
     ]
 
     # Same no-respawn reasoning as battery_monitor_node below: a missing INA260 is a clean, permanent exit

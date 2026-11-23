@@ -58,7 +58,7 @@ source install/setup.bash
 ros2 launch ina260_battery_monitor battery_monitor.launch.py
 ```
 
-The launch arguments are `battery_params_file`, `battery_overrides_file`, `battery_single_process` and `battery_frame_id` (the `BatteryState` header frame, default `base_link`; set it to `<prefix>base_link` for a namespaced robot).
+The launch arguments are `battery_params_file`, `battery_overrides_file`, `battery_single_process` and `frame_prefix` (default empty; the `BatteryState` header frame becomes `<frame_prefix>base_link`, e.g. `robot1/base_link`).
 
 Topic and service names are relative, so under a robot namespace (e.g. `/robot1`) they move with the nodes: `/battery_state` becomes `/robot1/battery_state`, and the same for `/battery_low`, `/diagnostics` and the rest. With no namespace nothing changes.
 
