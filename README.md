@@ -58,6 +58,10 @@ source install/setup.bash
 ros2 launch ina260_battery_monitor battery_monitor.launch.py
 ```
 
+The launch arguments are `battery_params_file`, `battery_overrides_file`, `battery_single_process` and `battery_frame_id` (the `BatteryState` header frame, default `base_link`; set it to `<prefix>base_link` for a namespaced robot).
+
+Topic and service names are relative, so under a robot namespace (e.g. `/robot1`) they move with the nodes: `/battery_state` becomes `/robot1/battery_state`, and the same for `/battery_low`, `/diagnostics` and the rest. With no namespace nothing changes.
+
 The checked-in [`config/battery.yaml`](config/battery.yaml) defaults match Seeed
 Studio's LeKiwi kit stock battery (E326S, 3S1P Li-ion, 2550 mAh). Running a different
 pack? Edit the file (cell count, chemistry, capacity, voltage cutoffs, I2C address) or
@@ -111,7 +115,7 @@ netted out correctly rather than ignored.
 | `serial_number` | `""` | `BatteryState.serial_number` |
 | `location` | `""` | `BatteryState.location` |
 | `publish_diagnostics` | `true` | Publish time-to-full/time-to-empty as a `DiagnosticArray` entry (see below) |
-| `diagnostics_topic` | `/diagnostics` | Topic for the battery `DiagnosticArray` entry |
+| `diagnostics_topic` | `diagnostics` | Topic for the battery `DiagnosticArray` entry |
 | `diagnostics_rate_hz` | `1.0` | How often the diagnostics entry is published; the ETA smoothing itself still updates on every sample |
 | `eta_current_ema_alpha` | `0.01` | EMA smoothing factor for the current used in the ETA calculation (~5s time constant at `publish_rate_hz=20`) - lower is smoother/slower to react |
 
@@ -198,7 +202,7 @@ publish_rate_hz` (~2 s with the defaults) of settled readings on top of that.
 
 | Parameter | Default |
 |---|---|
-| `battery_state_topic` | `/battery_state` |
+| `battery_state_topic` | `battery_state` |
 | `low_battery_threshold` / `low_battery_hysteresis` | `0.2` / `0.05` |
 | `critical_battery_threshold` / `critical_battery_hysteresis` | `0.1` / `0.03` |
 | `full_battery_threshold` / `full_battery_hysteresis` | `0.98` / `0.02` |
