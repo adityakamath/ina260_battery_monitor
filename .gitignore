@@ -38,3 +38,6 @@ ament_index/
 
 # .pytest_cache
 .pytest_cache/
+
+# Local colcon opt-out (e.g. macOS builds)
+COLCON_IGNORE
